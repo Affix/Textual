@@ -36,22 +36,24 @@
  *********************************************************************** */
 
 #ifdef __OBJC__
+	/* Frameworks. */
+
 	#import <Cocoa/Cocoa.h>
+
 	#import <WebKit/WebKit.h>
 	#import <Security/Security.h>
 	#import <CoreData/CoreData.h>
+
 	#import <SystemConfiguration/SystemConfiguration.h>
 
 	#import <SecurityInterface/SFCertificatePanel.h>
 	#import <SecurityInterface/SFCertificateTrustPanel.h>
 	#import <SecurityInterface/SFChooseIdentityPanel.h>
 
+	#import <AutoHyperlinks/AutoHyperlinks.h>
+
 	#import <BlowfishEncryption/BlowfishEncryption.h>
 	#import <SystemInformation/SystemInformation.h>
-	#import <AutoHyperlinks/AutoHyperlinks.h>
-	#import <HockeySDK/HockeySDK.h>
-
-	#import "StaticDefinitions.h"
 
 	/* Class Forwarders. */
 
@@ -136,10 +138,11 @@
 	@class TVCLogView;
 	@class TVCMainWindow;
 	@class TVCMainWindowLoadingScreenView;
-	@class TVCMainWindowSegmentedCell;
-	@class TVCMainWindowSegmentedControl;
+	@class TVCMainWindowSegmentedController;
+	@class TVCMainWindowSegmentedControllerCell;
 	@class TVCMainWindowTextView;
 	@class TVCMainWindowTextViewBackground;
+	@class TVCMainWindowSplitView;
 	@class TVCMemberList;
 	@class TVCMemberListCell;
 	@class TVCMemberListCellBadge;
@@ -156,10 +159,18 @@
 	@class TVCTextFieldWithValueValidationCell;
 	@class TVCTextFormatterMenu;
 	@class TVCTextViewWithIRCFormatter;
-	@class TVCThinSplitView;
 	@class TVCWebViewAutoScroll;
 	@class TXMasterController;
 	@class TXMenuController;
+
+	/* Static Defeinitions. */
+
+	#import "StaticDefinitions.h"
+
+	/* Import frameworks based on defines. */
+	#ifndef TEXTUAL_BUILT_WITH_HOCKEYAPP_SDK_DISABLED
+		#import <HockeySDK/HockeySDK.h>
+	#endif
 
 	/* 3rd Party Extensions. */
 
@@ -311,6 +322,7 @@
 	#import "TVCLogRenderer.h"
 	#import "TVCLogScriptEventSink.h"
 	#import "TVCLogView.h"
+	#import "TVCMainWindowSplitView.h"
 	#import "TVCMainWindow.h"
 	#import "TVCMainWindowLoadingScreen.h"
 	#import "TVCMainWindowSegmentedControl.h"
@@ -326,7 +338,6 @@
 	#import "TVCTextFieldWithValueValidation.h"
 	#import "TVCTextViewWithIRCFormatter.h"
 	#import "TVCTextFormatterMenu.h"
-	#import "TVCThinSplitView.h"
 	#import "TVCWebViewAutoScroll.h"
 
 	/* Master Controllers — Root. */

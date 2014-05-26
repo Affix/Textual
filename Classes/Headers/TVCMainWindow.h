@@ -38,9 +38,70 @@
 
 #import "TextualApplication.h"
 
-@interface TVCMainWindow : NSWindow
-@property (nonatomic, strong) TLOKeyEventHandler *keyHandler;
-@property (nonatomic, strong) NSValue *cachedSwipeOriginPoint;
+typedef enum TVCServerListNavigationMovementType : NSInteger {
+	TVCServerListNavigationMovementAllType,     // Move to next item.
+	TVCServerListNavigationMovementActiveType,  // Move to next active item.
+	TVCServerListNavigationMovementUnreadType,  // Move to next unread item.
+} TVCServerListNavigationMovementType;
+
+typedef enum TVCServerListNavigationSelectionType : NSInteger {
+	TVCServerListNavigationSelectionAnyType,		// Move to next item.
+	TVCServerListNavigationSelectionChannelType,	// Move to next channel item.
+	TVCServerListNavigationSelectionServerType,		// Move to next server item.
+} TVCServerListNavigationSelectionType;
+
+@interface TVCMainWindow : NSWindow <NSSplitViewDelegate, NSWindowDelegate>
+@property (nonatomic, assign, readonly) BOOL isActive;
+@property (nonatomic, assign, readonly) BOOL isRunningInHighResMode;
+@property (nonatomic, strong, readonly) NSValue *cachedSwipeOriginPoint;
+@property (nonatomic, assign, readonly) NSInteger memberListSplitViewOldPosition;
+@property (nonatomic, assign, readonly) NSInteger serverListSplitViewOldPosition;
+@property (nonatomic, nweak) IBOutlet NSBox *channelViewBox;
+@property (nonatomic, nweak) IBOutlet TVCMemberList *memberList;
+@property (nonatomic, nweak) IBOutlet TVCServerList *serverList;
+@property (nonatomic, nweak) IBOutlet TVCMainWindowSplitView *memberSplitView;
+@property (nonatomic, nweak) IBOutlet TVCMainWindowSplitView *serverSplitView;
+@property (nonatomic, uweak) IBOutlet TVCMainWindowTextView *inputTextField;
+@property (nonatomic, nweak) IBOutlet TVCMainWindowLoadingScreenView *loadingScreen;
+@property (nonatomic, nweak) IBOutlet TVCMainWindowSegmentedController *segmentedController;
+
+- (void)awakeFromMasterControllerStepOne;
+- (void)awakeFromMasterControllerStepTwo;
+
+- (void)prepareForApplicationTermination;
+
+- (void)buildInputHistoryController;
+- (TLOInputHistory *)inputHistoryController;
+
+- (void)showMemberListSplitView:(BOOL)showList;
+- (void)showServerListSplitView:(BOOL)showList;
+
+- (void)textEntered;
+
+- (void)updateSegmentedController;
+- (void)reloadSegmentedControllerOrigin;
+
+- (void)selectNextServer:(NSEvent *)e;
+- (void)selectNextChannel:(NSEvent *)e;
+- (void)selectNextWindow:(NSEvent *)e;
+- (void)selectPreviousServer:(NSEvent *)e;
+- (void)selectPreviousChannel:(NSEvent *)e;
+- (void)selectPreviousWindow:(NSEvent *)e;
+- (void)selectNextActiveServer:(NSEvent *)e;
+- (void)selectNextUnreadChannel:(NSEvent *)e;
+- (void)selectNextActiveChannel:(NSEvent *)e;
+- (void)selectPreviousSelection:(NSEvent *)e;
+- (void)selectPreviousActiveServer:(NSEvent *)e;
+- (void)selectPreviousUnreadChannel:(NSEvent *)e;
+- (void)selectPreviousActiveChannel:(NSEvent *)e;
+
+- (void)navigateChannelEntries:(BOOL)isMovingDown withNavigationType:(TVCServerListNavigationMovementType)navigationType;
+- (void)navigateServerEntries:(BOOL)isMovingDown withNavigationType:(TVCServerListNavigationMovementType)navigationType;
+- (void)navigateToNextEntry:(BOOL)isMovingDown;
+
+- (void)systemTintChangedNotification:(NSNotification *)notification;
+
+- (void)applicationDidFinishLaunching:(NSNotification *)note;
 
 - (void)setKeyHandlerTarget:(id)target;
 
