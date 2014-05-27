@@ -37,19 +37,24 @@
 
 #import "TextualApplication.h"
 
-@interface TVCMainWindowTextView : TVCTextViewWithIRCFormatter
-@property (nonatomic, strong) NSAttributedString *placeholderString;
-@property (nonatomic, assign) BOOL hasModifiedSpellingDictionary;
+typedef enum TVCMainWindowTextViewFontSize : NSInteger {
+	TVCMainWindowTextViewFontNormalSize			= 1,
+	TVCMainWindowTextViewFontLargeSize			= 2,
+	TVCMainWindowTextViewFontExtraLargeSize		= 3,
+} TVCMainWindowTextViewFontSize;
+
+@interface TVCMainWindowTextView : TVCTextViewWithIRCFormatter <NSTextViewDelegate>
+@property (nonatomic, assign) BOOL hasModifiedSpellingDictionary; /* This property is set and used elsewhere. */
+@property (nonatomic, nweak) IBOutlet id backgroundView;
+@property (nonatomic, nweak) IBOutlet id splitterView;
 
 - (void)updateTextDirection;
 - (void)updateTextBoxBasedOnPreferredFontSize;
 
 - (void)redrawOriginPoints;
-- (void)resetTextFieldCellSize:(BOOL)force;
 
-- (TVCMainWindowTextViewBackground *)backgroundView;
+- (void)resetTextFieldCellSize:(BOOL)force;
 @end
 
 @interface TVCMainWindowTextViewBackground : NSView
-@property (nonatomic, assign) BOOL windowIsActive;
 @end

@@ -39,8 +39,8 @@
 
 /* Much of the following drawing has been created by Dan Messing for the class "SSTextField" */
 #define _WindowContentBorderDefaultHeight		38.0
-
 #define _WindowSegmentedControllerDefaultX		10.0
+
 #define _InputTextFieldOriginDefaultX			166.0
 
 #define _KeyObservingArray 	@[	@"TextFieldAutomaticSpellCheck", \
@@ -55,7 +55,8 @@
 
 @interface TVCMainWindowTextView ()
 @property (nonatomic, assign) NSInteger lastDrawLineCount;
-@property (nonatomic, assign) TXMainTextBoxFontSize cachedFontSize;
+@property (nonatomic, strong) NSAttributedString *placeholderString;
+@property (nonatomic, assign) TVCMainWindowTextViewFontSize cachedFontSize;
 @end
 
 @implementation TVCMainWindowTextView
@@ -65,19 +66,26 @@
 
 - (id)initWithCoder:(NSCoder *)coder 
 {
-    self = [super initWithCoder:coder];
-	
-	if (self) {
-		[self updateTextBoxCachedPreferredFontSize]; // Set preferred font.
-		[self defineDefaultTypeSetterAttributes]; // Have parent text field inherit that.
+	if (self = [super initWithCoder:coder]) {
+		/* Set preferred font */
+		[self updateTextBoxCachedPreferredFontSize];
+
+		/* Have parent text field inherit new values. */
+		[self defineDefaultTypeSetterAttributes];
+
+		/* Have parent text field inherit new values. */
 		[self updateTypeSetterAttributes]; // --------------/
 
+		/* Bind observation keys. */
 		for (NSString *key in _KeyObservingArray) {
 			[RZUserDefaults() addObserver:self
 							   forKeyPath:key
 								  options:(NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew)
 								  context:NULL];
 		}
+
+		/* Listen for ourselves. */
+		[self setDelegate:self];
     }
 	
     return self;
@@ -104,15 +112,6 @@
 {
 	NSWindowNegateActionWithAttachedSheet();
 
-	/* Don't know why control click is broken in the text field. 
-	 Possibly because of how hacked together it is… anyways, this
-	 is a quick fix for control click to open the right click menu. */
-	if ([NSEvent modifierFlags] & NSControlKeyMask) {
-		[super rightMouseDown:theEvent];
-
-		return;
-	}
-
 	[super mouseDown:theEvent];
 }
 
@@ -121,26 +120,38 @@
 
 - (void)redrawOriginPoints
 {
+	/* Update origin points. */
 	NSInteger defaultSegmentX = _WindowSegmentedControllerDefaultX;
 	NSInteger defaultInputbxX = _InputTextFieldOriginDefaultX;
 
 	NSInteger resultOriginX = 0;
 	NSInteger resultSizeWth = (defaultInputbxX - defaultSegmentX);
-	
+
+	/* Define controls. */
+	TVCMainWindow *mainWindow = [_masterController mainWindow];
+
+	TVCMainWindowSegmentedController *controller = [mainWindow segmentedController];
+
+	NSScrollView *internalScrollview = [self enclosingScrollView];
+
+	/* Update controller based on preferences. */
 	if ([TPCPreferences hideMainWindowSegmentedController]) {
-		[self.masterController.mainWindowButtonController setHidden:YES];
+		[controller setHidden:YES];
 
 		resultOriginX = defaultSegmentX;
 	} else {
-		[self.masterController.mainWindowButtonController setHidden:NO];
+		[controller setHidden:NO];
 		
 		resultOriginX  = defaultInputbxX;
 		resultSizeWth *= -1;
 	}
 
-	NSRect fronFrame = self.scrollView.frame;
-	NSRect backFrame = self.backgroundView.frame;
-	
+	/* Get frames of view. */
+	NSRect fronFrame = [internalScrollview frame];
+
+	NSRect backFrame =  [_backgroundView frame];
+
+	/* Change frames if necessary. */
 	if (NSDissimilarObjects(resultOriginX, fronFrame.origin.x) &&
 		NSDissimilarObjects(resultOriginX, backFrame.origin.x))
 	{
@@ -150,13 +161,19 @@
 		fronFrame.origin.x = resultOriginX;
 		backFrame.origin.x = resultOriginX;
 		
-		[self.scrollView setFrame:fronFrame];
-		[self.backgroundView setFrame:backFrame];
+		[internalScrollview setFrame:fronFrame];
+
+		[_backgroundView setFrame:backFrame];
 	}
 }
 
 #pragma mark -
 #pragma mark Everything Else.
+
+- (BOOL)textDirectionIsNatural
+{
+	return ([self baseWritingDirection] == NSWritingDirectionRightToLeft);
+}
 
 - (void)updateTextDirection
 {
@@ -178,11 +195,11 @@
 		NSString *value = [self stringValue];
 		
 		if (NSObjectIsEmpty(value)) {
-			if (NSDissimilarObjects([self baseWritingDirection], NSWritingDirectionRightToLeft)) {
-				if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
-					[self.placeholderString drawAtPoint:NSMakePoint(6, 2)];
+			if ([self textDirectionIsNatural]) {
+				if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
+					[_placeholderString drawAtPoint:NSMakePoint(6, 2)];
 				} else {
-					[self.placeholderString drawAtPoint:NSMakePoint(6, 1)];
+					[_placeholderString drawAtPoint:NSMakePoint(6, 1)];
 				}
 			}
 		} else {
@@ -193,18 +210,24 @@
 
 - (void)paste:(id)sender
 {
+	/* Perform paste. */
     [super paste:self];
-    
+
+	/* Resize text field to fit new data. */
     [self resetTextFieldCellSize:NO];
 }
 
 - (BOOL)textView:(NSTextView *)aTextView doCommandBySelector:(SEL)aSelector
 {
     if (aSelector == @selector(insertNewline:)) {
-		[self.masterController textEntered];
-        
+		/* Did receive return event which means the main window can be
+		 inform text was entered so that it can treat it as an IRC event. */
+		[[_masterController mainWindow] textEntered];
+
+		/* -textEntered is supposed to clear the text field, so resize it. */
         [self resetTextFieldCellSize:NO];
-        
+
+		/* Let Apple know we handled this event. */
         return YES;
     }
     
@@ -214,27 +237,29 @@
 #pragma mark -
 #pragma mark Multi-line Text Box Drawing
 
+- (NSDictionary *)placeholderStringAttributes
+{
+	return @{NSFontAttributeName : [self defaultTextFieldFont], NSForegroundColorAttributeName : [NSColor grayColor]};
+}
+
 - (void)updateTextBoxCachedPreferredFontSize
 {
 	/* Update the font. */
-	self.cachedFontSize = [TPCPreferences mainTextBoxFontSize];
+	_cachedFontSize = [TPCPreferences mainTextBoxFontSize];
 
-	if (self.cachedFontSize == TXMainTextBoxFontNormalSize) {
+	if (_cachedFontSize == TVCMainWindowTextViewFontNormalSize) {
 		[self setDefaultTextFieldFont:[NSFont fontWithName:@"Helvetica" size:12.0]];
-	} else if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
 		[self setDefaultTextFieldFont:[NSFont fontWithName:@"Helvetica" size:14.0]];
-	} else if (self.cachedFontSize == TXMainTextBoxFontExtraLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontExtraLargeSize) {
 		[self setDefaultTextFieldFont:[NSFont fontWithName:@"Helvetica" size:16.0]];
 	}
 
 	/* Update the placeholder string. */
-	NSMutableDictionary *attrs = [NSMutableDictionary dictionary];
+	NSDictionary *attrs = [self placeholderStringAttributes];
 
-	attrs[NSFontAttributeName] = [self defaultTextFieldFont];
-	attrs[NSForegroundColorAttributeName] = [NSColor grayColor];
-
-	self.placeholderString = nil;
-	self.placeholderString = [NSAttributedString stringWithBase:TXTLS(@"TDCMainWindow[1000]") attributes:attrs];
+	_placeholderString = nil;
+	_placeholderString = [NSAttributedString stringWithBase:BLS(1000) attributes:attrs];
 
 	/* Prepare draw. */
 	[self setNeedsDisplay:YES];
@@ -242,14 +267,15 @@
 
 - (void)updateTextBoxBasedOnPreferredFontSize
 {
-	TXMainTextBoxFontSize cachedFontSize = self.cachedFontSize;
+	TVCMainWindowTextViewFontSize cachedFontSize = _cachedFontSize;
 
 	/* Update actual cache. */
 	[self updateTextBoxCachedPreferredFontSize];
 
 	/* We only update the font sizes if there was a chagne. */
-	if (NSDissimilarObjects(cachedFontSize, self.cachedFontSize)) {
+	if (NSDissimilarObjects(cachedFontSize, _cachedFontSize)) {
 		[self updateAllFontSizesToMatchTheDefaultFont];
+
 		[self updateTypeSetterAttributes];
 	}
 
@@ -257,31 +283,23 @@
 	[self resetTextFieldCellSize:YES];
 }
 
-- (NSView *)splitterView
-{
-    return [(self.superview.superview.superview.superview.subviews)[1] subviews][0]; /* Yeah, this is bad… I know! */
-}
-
-- (TVCMainWindowTextViewBackground *)backgroundView
-{
-	return (self.superview.superview.superview.subviews)[0]; /* This one is not so bad. */
-}
-
 /* It is easier for us to define predetermined values for these paramaters instead
  of trying to overcomplicate our math by calculating the point height of our font
  and other variables. We only support three text sizes so why not hard code? */
 - (NSInteger)backgroundViewMaximumHeight
 {
-	return (self.window.frame.size.height - 50);
+	NSRect windowFrame = [[self window] frame];
+
+	return (windowFrame.size.height - 50);
 }
 
 - (NSInteger)backgroundViewDefaultHeight
 {
-	if (self.cachedFontSize == TXMainTextBoxFontNormalSize) {
+	if (_cachedFontSize == TVCMainWindowTextViewFontNormalSize) {
 		return 23.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
 		return 28.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontExtraLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontExtraLargeSize) {
 		return 30.0;
 	}
 	
@@ -290,37 +308,37 @@
 
 - (NSInteger)backgroundViewHeightMultiplier
 {
-	if (self.cachedFontSize == TXMainTextBoxFontNormalSize) {
+	if (_cachedFontSize == TVCMainWindowTextViewFontNormalSize) {
 		return 14.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
 		return 17.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontExtraLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontExtraLargeSize) {
 		return 19.0;
 	}
 
 	return 14.0;
 }
 
-- (NSInteger)textBoxDefaultHeight
+- (NSInteger)foregroundViewDefaultHeight
 {
-	if (self.cachedFontSize == TXMainTextBoxFontNormalSize) {
+	if (_cachedFontSize == TVCMainWindowTextViewFontNormalSize) {
 		return 18.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
 		return 22.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontExtraLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontExtraLargeSize) {
 		return 24.0;
 	}
 
 	return 18.0;
 }
 
-- (NSInteger)textBoxHeightMultiplier
+- (NSInteger)foregroundViewHeightMultiplier
 {
-	if (self.cachedFontSize == TXMainTextBoxFontNormalSize) {
+	if (_cachedFontSize == TVCMainWindowTextViewFontNormalSize) {
 		return 14.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontLargeSize) {
 		return 17.0;
-	} else if (self.cachedFontSize == TXMainTextBoxFontExtraLargeSize) {
+	} else if (_cachedFontSize == TVCMainWindowTextViewFontExtraLargeSize) {
 		return 19.0;
 	}
 
@@ -332,54 +350,55 @@
 {
 	BOOL drawBezel = YES;
 
-	NSWindow *mainWindow = self.window;
+	NSWindow *mainWindow = [self window];
 
-	NSView *superView = [self splitterView];
-	NSView *background = [self backgroundView];
+	NSView *superView = _splitterView;
+	NSView *background = _backgroundView;
 
-    NSScrollView *scroller = [self scrollView];
+    NSScrollView *scroller = [self enclosingScrollView];
 
-	NSRect textBoxFrame = scroller.frame;
-	NSRect superViewFrame = superView.frame;
-	NSRect mainWindowFrame = mainWindow.frame;
-	NSRect backgroundFrame = background.frame;
+	NSRect superViewFrame = [superView frame];
+	NSRect mainWindowFrame = [mainWindow frame];
+
+	NSRect foregroundFrame = [scroller frame];
+	NSRect backgroundFrame = [background frame];
 
 	NSInteger contentBorder;
 
-	NSInteger inputBoxDefaultHeight = [self textBoxDefaultHeight];
+	NSInteger inputBoxForegroundDefaultHeight = [self foregroundViewDefaultHeight];
 	NSInteger inputBoxBackgroundDefaultHeight = [self backgroundViewDefaultHeight];
 
-	NSString *stringv = self.stringValue;
+	NSString *stringv = [self stringValue];
 
-	if (stringv.length < 1) {
-		textBoxFrame.size.height    = inputBoxDefaultHeight;
+	if ([stringv length] < 1) {
+		foregroundFrame.size.height = inputBoxForegroundDefaultHeight;
 		backgroundFrame.size.height = inputBoxBackgroundDefaultHeight;
 
-		if (self.lastDrawLineCount >= 2) {
+		if (NSDissimilarObjects(_lastDrawLineCount, 1)) {
 			drawBezel = YES;
 		}
 
-		self.lastDrawLineCount = 1;
+		_lastDrawLineCount = 1;
 	} else {
 		NSInteger totalLinesBase = [self numberOfLines];
 
-		if (self.lastDrawLineCount == totalLinesBase && force == NO) {
+		if (_lastDrawLineCount == totalLinesBase && force == NO) {
 			drawBezel = NO;
 		}
 
-		self.lastDrawLineCount = totalLinesBase;
+		_lastDrawLineCount = totalLinesBase;
 
 		if (drawBezel) {
 			NSInteger totalLinesMath = (totalLinesBase - 1);
 
-			NSInteger inputBoxHeightMultiplier = [self textBoxHeightMultiplier];
+			NSInteger inputBoxForegroundHeightMultiplier = [self foregroundViewHeightMultiplier];
 			NSInteger inputBoxBackgroundHeightMultiplier = [self backgroundViewHeightMultiplier];
 
 			/* Calculate unfiltered height. */
-			textBoxFrame.size.height    = inputBoxDefaultHeight;
+			foregroundFrame.size.height = inputBoxForegroundDefaultHeight;
 			backgroundFrame.size.height	= inputBoxBackgroundDefaultHeight;
 
-			textBoxFrame.size.height    += (totalLinesMath * inputBoxHeightMultiplier);
+			foregroundFrame.size.height += (totalLinesMath * inputBoxForegroundHeightMultiplier);
 			backgroundFrame.size.height += (totalLinesMath * inputBoxBackgroundHeightMultiplier);
 
 			NSInteger backgroundViewMaxHeight = [self backgroundViewMaximumHeight];
@@ -397,8 +416,8 @@
 					} else {
 						backgroundFrame.size.height = newSize;
 
-						textBoxFrame.size.height  =      inputBoxDefaultHeight;
-						textBoxFrame.size.height += (i * inputBoxHeightMultiplier);
+						foregroundFrame.size.height  =      inputBoxForegroundDefaultHeight;
+						foregroundFrame.size.height += (i * inputBoxForegroundHeightMultiplier);
 
 						break;
 					}
@@ -408,6 +427,7 @@
 	}
 
 	if (drawBezel) {
+		/* 14 is the top and bottom padding inside the content border. */
 		contentBorder = (backgroundFrame.size.height + 14);
 
 		superViewFrame.origin.y = contentBorder;
@@ -415,12 +435,13 @@
 		if ([mainWindow isInFullscreenMode]) {
 			superViewFrame.size.height = (mainWindowFrame.size.height - contentBorder);
 		} else {
+			/* 22 is added to account for menu bar when outside of fullscreen mode. */
 			superViewFrame.size.height = (mainWindowFrame.size.height - contentBorder - 22);
 		}
 
 		[mainWindow setContentBorderThickness:contentBorder forEdge:NSMinYEdge];
 
-		[scroller setFrame:textBoxFrame];
+		[scroller setFrame:foregroundFrame];
 		[superView setFrame:superViewFrame];
 		[background setFrame:backgroundFrame];
 	}
@@ -524,20 +545,39 @@
 
 @implementation TVCMainWindowTextViewBackground
 
-- (NSColor *)inputFieldBackgroundColor
+- (BOOL)mainWindowIsActive
+{
+	return [[_masterController mainWindow] isActive];
+}
+
+- (NSColor *)inputTextFieldBackgroundColor
 {
 	return [NSColor whiteColor];
 }
 
-- (NSColor *)inputFieldInsideShadowColor
+- (NSColor *)inputTextFieldInsideShadowColor
 {
 	return [NSColor colorWithCalibratedWhite:0.88 alpha:1.0];
+}
+
+- (NSColor *)inputTextFieldOutsideShadowColor
+{
+	return [NSColor colorWithCalibratedWhite:1.0 alpha:0.394];
+}
+
+- (NSColor *)inputTextFieldOutlineColor
+{
+	if ([self mainWindowIsActive]) {
+		return [NSColor colorWithCalibratedWhite:0.0 alpha:0.4];
+	} else {
+		return [NSColor colorWithCalibratedWhite:0.0 alpha:0.23];
+	}
 }
 
 - (void)drawRect:(NSRect)dirtyRect
 {
 	if ([self needsToDrawRect:dirtyRect]) {
-		NSRect cellBounds = self.frame;
+		NSRect cellBounds = [self frame];
 		NSRect controlFrame;
 		
 		NSColor *controlColor;
@@ -545,37 +585,52 @@
 		NSBezierPath *controlPath;
 		
 		/* Control Outside White Shadow. */
-		controlColor = [NSColor colorWithCalibratedWhite:1.0 alpha:0.394];
-		controlFrame = NSMakeRect(0.0, 0.0, cellBounds.size.width, 1.0);
+		controlColor = [self inputTextFieldOutsideShadowColor];
+
+		controlFrame = NSMakeRect(0.0,
+								  0.0,
+								  cellBounds.size.width,
+								  1.0);
+
 		controlPath = [NSBezierPath bezierPathWithRoundedRect:controlFrame xRadius:3.6 yRadius:3.6];
 		
 		[controlColor set];
 		[controlPath fill];
 		
 		/* Black Outline. */
-		if (self.masterController.mainWindowIsActive) {
-			controlColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.4];
-		} else {
-			controlColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.23];
-		}
-		
-		controlFrame = NSMakeRect(0.0, 1.0, cellBounds.size.width, (cellBounds.size.height - 1.0));
+		controlColor = [self inputTextFieldOutlineColor];
+
+		controlFrame = NSMakeRect(0.0,
+								  1.0,
+								   cellBounds.size.width,
+								  (cellBounds.size.height - 1.0));
+
 		controlPath = [NSBezierPath bezierPathWithRoundedRect:controlFrame xRadius:3.6 yRadius:3.6];
 		
 		[controlColor set];
 		[controlPath fill];
 		
 		/* White Background. */
-		controlColor = [self inputFieldBackgroundColor];
-		controlFrame = NSMakeRect(1, 2, (cellBounds.size.width - 2.0), (cellBounds.size.height - 4.0));
+		controlColor = [self inputTextFieldBackgroundColor];
+
+		controlFrame = NSMakeRect(1.0,
+								  2.0,
+								  (cellBounds.size.width - 2.0),
+								  (cellBounds.size.height - 4.0));
+
 		controlPath	= [NSBezierPath bezierPathWithRoundedRect:controlFrame xRadius:2.6 yRadius:2.6];
 		
 		[controlColor set];
 		[controlPath fill];
 		
 		/* Inside White Shadow. */
-		controlColor = [self inputFieldInsideShadowColor];
-		controlFrame = NSMakeRect(2, (cellBounds.size.height - 2.0), (cellBounds.size.width - 4.0), 1.0);
+		controlColor = [self inputTextFieldInsideShadowColor];
+
+		controlFrame = NSMakeRect(2.0,
+								  (cellBounds.size.height - 2.0),
+								  (cellBounds.size.width - 4.0),
+								  1.0);
+		
 		controlPath = [NSBezierPath bezierPathWithRoundedRect:controlFrame xRadius:2.9 yRadius:2.9];
 		
 		[controlColor set];

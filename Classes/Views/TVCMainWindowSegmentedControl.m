@@ -38,15 +38,17 @@
 
 #import "TextualApplication.h"
 
-@implementation TVCMainWindowSegmentedControl
+#warning Refactor TODO: Update interface builder to reflect name change of class.
+
+@implementation TVCMainWindowSegmentedController
 @end
 
-@implementation TVCMainWindowSegmentedCell
+@implementation TVCMainWindowSegmentedControllerCell
 
 - (SEL)action
 {
     if ([self menuForSegment:[self selectedSegment]] == nil) {
-		[[self menuController] showChannelIgnoreList:self];
+		[_menuController showChannelIgnoreList:self];
 
 		return nil;
     } else {
