@@ -37,14 +37,16 @@
 
 #import "TextualApplication.h"
 
+@interface TVCTextViewWithIRCFormatter ()
+@property (nonatomic, strong) TLOKeyEventHandler *keyHandler;
+@end
+
 @implementation TVCTextViewWithIRCFormatter
 
 - (id)initWithCoder:(NSCoder *)coder
 {
-    self = [super initWithCoder:coder];
-
-	if (self) {
-		self.delegate = self;
+	if (self = [super initWithCoder:coder]) {
+		[self setDelegate:self];
 
 		if ([TPCPreferences rightToLeftFormatting]) {
 			[self setBaseWritingDirection:NSWritingDirectionRightToLeft];
@@ -52,34 +54,38 @@
             [self setBaseWritingDirection:NSWritingDirectionLeftToRight];
 		}
 
-		[self setDefaultTextFieldFont:TXDefaultTextFieldFont];
+		_defaultTextFieldFont = TVCTextViewWithIRCFormatterFont;
 
 		[self defineDefaultTypeSetterAttributes];
+
 		[self updateTypeSetterAttributes];
 
-        [super setTextContainerInset:NSMakeSize(TXDefaultTextFieldWidthPadding, TXDefaultTextFieldHeightPadding)];
+        [super setTextContainerInset:NSMakeSize(TVCTextViewWithIRCFormatterWidthPadding,
+												TVCTextViewWithIRCFormatterHeightPadding)];
 
-        if (PointerIsEmpty(self.keyHandler)) {
-            self.keyHandler = [TLOKeyEventHandler new];
-        }
+		_keyHandler = [TLOKeyEventHandler new];
         
-        self.formattingQueue = dispatch_queue_create("formattingQueue", NULL);
+		_formattingMenu = [TVCTextViewIRCFormatterMenu new];
     }
 	
     return self;
 }
 
-- (void)dealloc
-{
-	dispatch_release(self.formattingQueue);
-
-	self.formattingQueue = NULL;
-}
-
 - (void)mouseDown:(NSEvent *)theEvent
 {
-    [self.window makeFirstResponder:self];
+	/* Focus text field. */
+    [_window makeFirstResponder:self];
 
+	/* Don't know why control click is broken in the text field.
+	 Possibly because of how hacked together it is… anyways, this
+	 is a quick fix for control click to open the right click menu. */
+	if ([NSEvent modifierFlags] & NSControlKeyMask) {
+		[super rightMouseDown:theEvent];
+
+		return; // Do not send action to super.
+	}
+
+	/* Send upstream. */
     [super mouseDown:theEvent];
 }
 
@@ -88,23 +94,23 @@
 
 - (void)setKeyHandlerTarget:(id)target
 {
-	[self.keyHandler setTarget:target];
+	[_keyHandler setTarget:target];
 }
 
 - (void)registerKeyHandler:(SEL)selector key:(NSInteger)code modifiers:(NSUInteger)mods
 {
-	[self.keyHandler registerSelector:selector key:code modifiers:mods];
+	[_keyHandler registerSelector:selector key:code modifiers:mods];
 }
 
 - (void)registerKeyHandler:(SEL)selector character:(UniChar)c modifiers:(NSUInteger)mods
 {
-	[self.keyHandler registerSelector:selector character:c modifiers:mods];
+	[_keyHandler registerSelector:selector character:c modifiers:mods];
 }
 
 - (void)keyDown:(NSEvent *)e
 {
-	if ([self.keyHandler processKeyEvent:e]) {
-		return;
+	if ([_keyHandler processKeyEvent:e]) {
+		return; // Key handler will handle event.
 	}
 
 	[self keyDownToSuper:e];
@@ -130,7 +136,7 @@
 
 - (NSAttributedString *)attributedStringValue
 {
-    return self.attributedString.copy;
+    return [self attributedString];
 }
 
 - (void)setAttributedStringValue:(NSAttributedString *)string
@@ -160,29 +166,27 @@
 - (void)addUndoActionForAttributes:(NSDictionary *)attributes inRange:(NSRange)local
 {
 	if (NSObjectIsEmpty(attributes) || NSRangeIsValid(local) == NO) {
-		return;
+		return; // Bad input value.
 	}
 	
 	//DebugLogToConsole(@"%@; %@", attributes, NSStringFromRange(local));
 
-	[self.undoManager registerUndoWithTarget:self
-									selector:@selector(setAttributesWithContext:)
-									  object:@[attributes, NSStringFromRange(local)]];
+	[[self undoManager] registerUndoWithTarget:self
+									  selector:@selector(setAttributesWithContext:)
+										object:@[attributes, NSStringFromRange(local)]];
 }
 
 - (void)setAttributesWithContext:(NSArray *)contextArray /* @private */
 {
 	NSRange local = NSRangeFromString(contextArray[1]);
 
-	NSDictionary *attrs = [self.attributedString attributesAtIndex:0
-											 longestEffectiveRange:NULL
-														   inRange:local];
+	NSDictionary *attrs = [[self attributedString] attributesAtIndex:0
+											   longestEffectiveRange:NULL
+															 inRange:local];
 
-	[self.undoManager registerUndoWithTarget:self
-									selector:@selector(setAttributesWithContext:)
-									  object:@[attrs, NSStringFromRange(local)]];
-
-	//DebugLogToConsole(@"old: %@; new: %@", attrs, contextArray[0]);
+	[[self undoManager] registerUndoWithTarget:self
+									  selector:@selector(setAttributesWithContext:)
+										object:@[attrs, NSStringFromRange(local)]];
 	
 	[self setAttributes:contextArray[0] inRange:local];
 }
@@ -191,23 +195,26 @@
 
 - (void)removeAttribute:(id)attr inRange:(NSRange)local
 {
-    [self.textStorage removeAttribute:attr range:local];
+    [[self textStorage] removeAttribute:attr range:local];
 }
 
 - (void)setAttributes:(id)attrs inRange:(NSRange)local
 {
-	[self.textStorage addAttributes:attrs range:local];
+	[[self textStorage] addAttributes:attrs range:local];
 }
 
 #pragma mark -
 
 - (void)textDidChange:(NSNotification *)aNotification
 {
-	if (self.string.length < 1) {
-		[self defineDefaultTypeSetterAttributes]; // -------------/
+	/* Update attributes. */
+	if ([self stringLength] < 1) {
+		[self defineDefaultTypeSetterAttributes];
+
 		[self updateTypeSetterAttributes]; // Reset these values when field becomes empty.
 	}
 
+	/* Call any listeners. */
 	if ([self respondsToSelector:@selector(internalTextDidChange:)]) {
 		[self performSelector:@selector(internalTextDidChange:) withObject:aNotification];
 	}
@@ -217,42 +224,49 @@
 
 - (void)updateAllFontSizesToMatchTheDefaultFont
 {
-	CGFloat newPointSize = self.defaultTextFieldFont.pointSize;
+	CGFloat newPointSize = [_defaultTextFieldFont pointSize];
 
-    [self.textStorage beginEditing];
+    [[self textStorage] beginEditing];
 
-    [self.textStorage enumerateAttribute:NSFontAttributeName
-                            inRange:[self fullSelectionRange]
-                            options:0
-                         usingBlock:^(id value, NSRange range, BOOL *stop)
+    [[self textStorage] enumerateAttribute:NSFontAttributeName
+								   inRange:[self fullSelectionRange]
+								   options:0
+								usingBlock:^(id value, NSRange range, BOOL *stop)
 	{
 		NSFont *oldfont = value;
 
-		if (NSDissimilarObjects(oldfont.pointSize, newPointSize)) {
+		CGFloat oldPointSize = [oldfont pointSize];
+
+		if (NSDissimilarObjects(oldPointSize, newPointSize)) {
 			NSFont *font = [RZFontManager() convertFont:value toSize:newPointSize];
 
-			if (PointerIsNotEmpty(font)) {
-				[self.textStorage removeAttribute:NSFontAttributeName range:range];
+			if (font) {
+				[[self textStorage] removeAttribute:NSFontAttributeName range:range];
 				
-				[self.textStorage addAttribute:NSFontAttributeName value:font range:range];
+				[[self textStorage] addAttribute:NSFontAttributeName value:font range:range];
 			}
 		}
 	}];
 
-    [self.textStorage endEditing];
+    [[self textStorage] endEditing];
 }
 
 - (void)updateTypeSetterAttributes
 {
-	[self setTypingAttributes:@{NSFontAttributeName : self.defaultTextFieldFont, NSForegroundColorAttributeName : TXDefaultTextFieldFontColor}];
+	NSDictionary *attrs = @{NSFontAttributeName : _defaultTextFieldFont, NSForegroundColorAttributeName : TVCTextViewWithIRCFormatterFontColor};
+
+	[self setTypingAttributes:attrs];
 }
 
 - (void)defineDefaultTypeSetterAttributes
 {
-	[self setFont:self.defaultTextFieldFont];
+	/* Set text field font. */
+	[self setFont:_defaultTextFieldFont];
 
-	[self setTextColor:TXDefaultTextFieldFontColor];
-	[self setInsertionPointColor:TXDefaultTextFieldFontColor];
+	/* Set text field color. */
+	[self setTextColor:TVCTextViewWithIRCFormatterFontColor];
+
+	[self setInsertionPointColor:TVCTextViewWithIRCFormatterFontColor];
 }
 
 #pragma mark -
@@ -274,9 +288,9 @@
 	
 	/* Range of selected line. */
 	NSRange blr;
-	NSRange selr = self.selectedRange;
+	NSRange selr = [self selectedRange];
 	
-	if (selr.location <= self.stringLength) {
+	if (selr.location <= [self stringLength]) {
 		[layoutManager lineFragmentRectForGlyphAtIndex:selr.location effectiveRange:&blr];
 	} else {
 		return -1;
@@ -323,11 +337,11 @@
 	 the end of our field. Therefore, we must manually check if the 
 	 last line of our input is a blank newline. If it is, then 
 	 increase our count by one. */
-	NSString *lastChar = [self.stringValue stringCharacterAtIndex:(self.stringLength - 1)];
-	
-	NSRange nlr = [lastChar rangeOfCharacterFromSet:[NSCharacterSet newlineCharacterSet]];
-	
-	if (NSDissimilarObjects(nlr.location, NSNotFound)) {
+	NSInteger lastIndex = ([self stringLength] - 1);
+
+	UniChar lastChar = [[self stringValue] characterAtIndex:lastIndex];
+
+	if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastChar]) {
 		numberOfLines += 1;
 	}
 	
