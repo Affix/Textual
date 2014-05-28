@@ -37,17 +37,14 @@
 
 #import "TextualApplication.h"
 
-#define IRCTextFormatterMenuTag			53037
+#define TVCTextViewIRCFormatterMenuTag			53037
 
-@interface TVCTextFormatterMenu : NSObject
+@interface TVCTextViewIRCFormatterMenu : NSObject
 @property (nonatomic, uweak) TVCTextViewWithIRCFormatter *textField;
 @property (nonatomic, nweak) IBOutlet NSMenuItem *formatterMenu;
 @property (nonatomic, nweak) IBOutlet NSMenu *foregroundColorMenu;
 @property (nonatomic, nweak) IBOutlet NSMenu *backgroundColorMenu;
-@property (nonatomic, assign) BOOL sheetOverrideEnabled;
-
-- (void)enableSheetField:(TVCTextViewWithIRCFormatter *)field;
-- (void)enableWindowField:(TVCTextViewWithIRCFormatter *)field;
+@property (nonatomic, assign) dispatch_queue_t formattingQueue;
 
 - (BOOL)boldSet;
 - (BOOL)italicSet;
