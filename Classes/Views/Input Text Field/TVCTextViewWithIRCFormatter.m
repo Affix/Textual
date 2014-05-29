@@ -300,18 +300,19 @@
 	 the same technique we use for counting our total number of 
 	 lines. If a range matches our base while looping, then that 
 	 is our selected line number. */
-	NSUInteger numberOfLines, index, numberOfGlyphs = [layoutManager numberOfGlyphs];
+	NSUInteger numberOfLines = 0;
+	NSUInteger numberOfGlyphs = [layoutManager numberOfGlyphs];
 	
 	NSRange lineRange;
 	
-	for (numberOfLines = 0, index = 0; index < numberOfGlyphs; numberOfLines++) {
-		[layoutManager lineFragmentRectForGlyphAtIndex:index effectiveRange:&lineRange];
+	for (NSInteger i = 0; i < numberOfGlyphs; numberOfLines++) {
+		[layoutManager lineFragmentRectForGlyphAtIndex:i effectiveRange:&lineRange];
 
 		if (NSEqualRanges(blr, lineRange)) {
 			return (numberOfLines + 1);
 		}
 		
-		index = NSMaxRange(lineRange);
+		i = NSMaxRange(lineRange);
 	}
 
 	return [self numberOfLines];
@@ -322,14 +323,15 @@
 	/* Base line number count. */
 	NSLayoutManager *layoutManager = [self layoutManager];
 	
-	NSUInteger numberOfLines, index, numberOfGlyphs = [layoutManager numberOfGlyphs];
-	
-	NSRange lineRange;
-	
-	for (numberOfLines = 0, index = 0; index < numberOfGlyphs; numberOfLines++) {
-		[layoutManager lineFragmentRectForGlyphAtIndex:index effectiveRange:&lineRange];
+	NSUInteger numberOfLines = 0;
+	NSUInteger numberOfGlyphs = [layoutManager numberOfGlyphs];
 
-		index = NSMaxRange(lineRange);
+	NSRange lineRange;
+
+	for (NSInteger i = 0; i < numberOfGlyphs; numberOfLines++) {
+		[layoutManager lineFragmentRectForGlyphAtIndex:i effectiveRange:&lineRange];
+
+		i = NSMaxRange(lineRange);
 	}
 	
 	/* The method used above for counting the number of lines in

@@ -95,7 +95,9 @@
 /* These drawing things are pretty sophisticaked so i do not even know how they work… */
 - (void)reloadAllDrawings:(BOOL)doNotLimit
 {
-	for (NSInteger i = 0; i < [self numberOfRows]; i++) {
+	NSUInteger rowCount = [self numberOfRows];
+
+	for (NSInteger i = 0; i < rowCount; i++) {
 		[self updateDrawingForRow:i skipDrawingCheck:doNotLimit];
 	}
 
@@ -153,24 +155,26 @@
 	}
 }
 
+- (BOOL)mainWindowIsActive
+{
+	return [[_masterController mainWindow] isActive];
+}
+
 - (void)updateBackgroundColor
 {
-	if ([TPCPreferences invertSidebarColors] || self.masterController.mainWindowIsActive == NO) {
+	NSScrollView *internalScrollview = [self enclosingScrollView];
+
+	if ([TPCPreferences invertSidebarColors] || [self mainWindowIsActive] == NO) {
 		[self setBackgroundColor:[NSColor clearColor]];
 		
-		[self.scrollView setBackgroundColor:self.properBackgroundColor];
+		[internalScrollview setBackgroundColor:[self properBackgroundColor]];
 	} else {
-		[self setBackgroundColor:self.properBackgroundColor];
+		[self setBackgroundColor:[self properBackgroundColor]];
 
-		[self.scrollView setBackgroundColor:[NSColor clearColor]];
+		[internalScrollview setBackgroundColor:[NSColor clearColor]];
 	}
 	
 	[self setNeedsDisplay:YES];
-}
-
-- (NSScrollView *)scrollView
-{
-	return (id)self.superview.superview;
 }
 
 #pragma mark -
@@ -178,17 +182,19 @@
 
 - (NSMenu *)menuForEvent:(NSEvent *)e
 {
-	NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+	NSPoint p = [self convertPoint:[e locationInWindow] fromView:nil];
 
 	NSInteger i = [self rowAtPoint:p];
 
-	if (i >= 0 && NSDissimilarObjects(i, self.selectedRow)) {
-		[self selectItemAtIndex:i];
-	} else if (i == -1) {
-		return self.masterController.addServerMenu;
+	if (i == -1) {
+		return [_menuController addServerMenu];
+	} else {
+		if (NSDissimilarObjects(i, [self selectedRow])) {
+			[self selectItemAtIndex:i];
+		}
 	}
 
-	return self.menu;
+	return [self menu];
 }
 
 - (void)rightMouseDown:(NSEvent *)theEvent
@@ -200,18 +206,22 @@
 
 - (void)keyDown:(NSEvent *)e
 {
-	if (self.keyDelegate) {
+	if (_keyDelegate) {
 		switch ([e keyCode]) {
 			case 123 ... 126:
 			case 116:
 			case 121:
+			{
 				break;
+			}
 			default:
-				if ([self.keyDelegate respondsToSelector:@selector(serverListKeyDown:)]) {
-					[self.keyDelegate serverListKeyDown:e];
+			{
+				if ([_keyDelegate respondsToSelector:@selector(serverListKeyDown:)]) {
+					[_keyDelegate serverListKeyDown:e];
 				}
 				
 				break;
+			}
 		}
 	}
 }
@@ -246,11 +256,9 @@
 #pragma mark -
 #pragma mark User Interface Design Elements
 
-/* @_@ gawd, wut haf i gutten miself intu. */
-
 - (NSColor *)properBackgroundColor
 {
-	if (self.masterController.mainWindowIsActive) {
+	if ([self mainWindowIsActive]) {
 		return [self activeWindowListBackgroundColor];
 	} else {
 		return [self inactiveWindowListBackgroundColor];
@@ -495,16 +503,18 @@
 		}
 	} else {
 		if (up) {
-			return self.defaultDisclosureTriangle;
+			return _defaultDisclosureTriangle;
 		} else {
-			return self.alternateDisclosureTriangle;
+			return _alternateDisclosureTriangle;
 		}
 	}
 }
 
 - (NSString *)privateMessageStatusIconFilename:(BOOL)selected
 {
-	return [NSColor defineUserInterfaceItem:@"NSUser" invertedItem:@"DarkServerListViewSelectedPrivateMessageUser" withOperator:(selected == NO)];
+	return [NSColor defineUserInterfaceItem:@"NSUser"
+							   invertedItem:@"DarkServerListViewSelectedPrivateMessageUser"
+							   withOperator:(selected == NO)];
 }
 
 @end
