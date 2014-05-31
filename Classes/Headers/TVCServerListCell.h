@@ -42,6 +42,7 @@
 @property (nonatomic, nweak) NSTextField *customTextField;
 @property (nonatomic, nweak) NSImageView *backgroundImageCell;
 @property (nonatomic, nweak) NSImageView *badgeCountImageCell;
+@property (nonatomic, uweak) TVCServerList *serverList;
 
 - (NSDictionary *)drawingContext;
 

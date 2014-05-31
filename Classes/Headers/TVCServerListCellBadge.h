@@ -37,11 +37,9 @@
 
 #import "TextualApplication.h"
 
-/* TVCServerListCellBadge is used exclusively by the server list to draw badges
- for channels. Its internal renderer relies entirely on the presence of the server
- list and related items so do not try and call this through a plugin. */
-
 @interface TVCServerListCellBadge : NSObject
+@property (nonatomic, uweak) TVCServerList *serverList;
+
 - (NSImage *)drawBadgeForCellItem:(id)cellItem withDrawingContext:(NSDictionary *)drawContext;
 
 - (NSSize)scaledSize;
